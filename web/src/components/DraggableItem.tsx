@@ -8,9 +8,11 @@ export interface PlacementState {
   normalizedY: number; // 0.0 to 1.0
   normalizedWidth: number; // 0.0 to 1.0
   normalizedHeight: number; // 0.0 to 1.0
-  type: 'signature' | 'date' | 'initials' | 'text';
+  type: 'signature' | 'date' | 'initials' | 'text' | 'checkmark' | 'crossmark' | 'stamp';
   data?: string; // base64 PNG
   text?: string;
+  fontSize?: number;
+  color?: string;
   isSelected?: boolean;
 }
 
@@ -175,23 +177,55 @@ export const DraggableItem: React.FC<DraggableItemProps> = ({
     >
       {/* Visual Content */}
       <div className="w-full h-full flex items-center justify-center pointer-events-none overflow-hidden p-0.5">
-        {item.type === 'signature' || item.type === 'initials' ? (
+        {item.type === 'signature' || item.type === 'initials' || item.type === 'stamp' ? (
           item.data ? (
             <img
               src={item.data}
-              alt="Signature"
+              alt={item.type}
               className="w-full h-full object-contain filter drop-shadow-sm"
               draggable={false}
             />
           ) : (
-            <span className="text-xs text-slate-400 italic">Signature</span>
+            <span className="text-xs text-slate-400 italic">{item.type}</span>
           )
+        ) : item.type === 'checkmark' ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg
+              className="w-full h-full text-emerald-600 dark:text-emerald-400 filter drop-shadow-xs"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+        ) : item.type === 'crossmark' ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg
+              className="w-full h-full text-red-600 dark:text-red-400 filter drop-shadow-xs"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </div>
         ) : item.type === 'date' ? (
           <div className="w-full h-full flex items-center justify-center bg-white/90 dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-xs font-mono font-medium text-slate-800 dark:text-slate-100 shadow-sm">
             {item.text || 'YYYY-MM-DD'}
           </div>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-white/90 dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 text-xs font-medium text-slate-800 dark:text-slate-100 shadow-sm">
+          <div
+            style={{ fontSize: item.fontSize ? `${item.fontSize}px` : '12px' }}
+            className="w-full h-full flex items-center justify-center bg-white/90 dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 font-medium text-slate-800 dark:text-slate-100 shadow-sm text-center leading-tight truncate"
+          >
             {item.text || 'Text'}
           </div>
         )}

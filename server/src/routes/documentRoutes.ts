@@ -12,7 +12,7 @@ const placementSchema = z.object({
   normalizedY: z.number().min(0).max(1),
   normalizedWidth: z.number().min(0).max(1),
   normalizedHeight: z.number().min(0).max(1),
-  type: z.enum(['signature', 'date', 'initials', 'text']),
+  type: z.enum(['signature', 'date', 'initials', 'text', 'checkmark', 'crossmark', 'stamp']),
   data: z.string().optional(),
   text: z.string().optional(),
   fontSize: z.number().optional(),
@@ -177,6 +177,19 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
       const signedFilename = `${baseName}_signed.pdf`;
       const signedMeta = await tempStore.saveDocument(result.signedBuffer, signedFilename);
 
+      // Record notarization for verification lookups
+      tempStore.saveNotarization({
+        originalSha256: result.originalSha256,
+        signedSha256: result.signedSha256,
+        docId: signedMeta.docId,
+        filename: signedMeta.filename,
+        pageCount: result.pageCount,
+        placementsCount: placements.length,
+        signer: resolvedSigner,
+        timestamp: new Date().toISOString(),
+        hasAuditCertificate: !!includeAuditCertificate
+      });
+
       return {
         signedDocId: signedMeta.docId,
         filename: signedMeta.filename,
@@ -189,6 +202,95 @@ export const documentRoutes: FastifyPluginAsync = async (server: FastifyInstance
       server.log.error(err, 'Failed to stamp PDF document');
       return reply.status(500).send({ error: 'Failed to stamp and save PDF document' });
     }
+  });
+
+  // Verify document notarization via SHA-256 hash
+  server.get('/api/verify/:hash', async (request, reply) => {
+    const { hash } = request.params as { hash: string };
+    const record = tempStore.getNotarization(hash);
+    if (!record) {
+      return reply.status(404).send({
+        isVerified: false,
+        error: 'No notarization record found for this cryptographic hash'
+      });
+    }
+
+    return {
+      isVerified: true,
+      filename: record.filename,
+      originalSha256: record.originalSha256,
+      signedSha256: record.signedSha256,
+      pageCount: record.pageCount,
+      placementsCount: record.placementsCount,
+      signer: record.signer,
+      timestamp: record.timestamp,
+      hasAuditCertificate: record.hasAuditCertificate
+    };
+  });
+
+  // Multi-party signing session: Create
+  server.post('/api/sessions/create', async (request, reply) => {
+    const sessionCreateSchema = z.object({
+      originalDocId: z.string().uuid(),
+      filename: z.string().optional(),
+      signers: z.array(
+        z.object({
+          telegramId: z.number().optional(),
+          username: z.string().optional(),
+          name: z.string()
+        })
+      ).min(1)
+    });
+
+    const parsed = sessionCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid session payload', details: parsed.error.format() });
+    }
+
+    const { originalDocId, filename = 'document.pdf', signers } = parsed.data;
+    const doc = await tempStore.getDocument(originalDocId);
+    if (!doc) {
+      return reply.status(404).send({ error: 'Source document not found or expired' });
+    }
+
+    const session = tempStore.createMultiPartySession(originalDocId, filename, signers);
+    return reply.status(201).send(session);
+  });
+
+  // Multi-party signing session: Retrieve status
+  server.get('/api/sessions/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const session = tempStore.getMultiPartySession(id);
+    if (!session) {
+      return reply.status(404).send({ error: 'Session not found' });
+    }
+    return session;
+  });
+
+  // Multi-party signing session: Advance with signed document
+  server.post('/api/sessions/:id/sign', async (request, reply) => {
+    const sessionAdvanceSchema = z.object({
+      signedDocId: z.string().uuid(),
+      signerIdentifier: z.union([z.string(), z.number()])
+    });
+
+    const parsed = sessionAdvanceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid session advance payload' });
+    }
+
+    const { signedDocId, signerIdentifier } = parsed.data;
+    const session = tempStore.advanceMultiPartySession(
+      (request.params as any).id,
+      signerIdentifier,
+      signedDocId
+    );
+
+    if (!session) {
+      return reply.status(404).send({ error: 'Session not found or already completed' });
+    }
+
+    return session;
   });
 
   // Export signed document back to Telegram chat

@@ -54,8 +54,12 @@ Signet consists of two main components packaged together:
 - **Zero domain requirement**: Bot runs via long polling. Local testing runs directly in your browser without requiring a reverse proxy or public HTTPS domain.
 - **Accurate coordinate mapping**: Converts CSS canvas coordinates to 72 DPI PDF point units with bottom-left origin across screen orientations and zoom levels.
 - **Dual mode signature input**: Sign via finger or stylus drawing, or type your name using cursive typography.
-- **Multi-item placement**: Add signatures, dates, and initials anywhere on any page of the document.
-- **Tamper-evident audit certificate**: Optional verification sheet appended to the PDF detailing signer credentials, UTC timestamps, and SHA-256 document hashes.
+- **Rich form filling tools**: 1-tap Checkmarks (✓), Crossmarks (✗), custom text badges (signer title, company name, VAT code), and official circular company seal generator.
+- **Signature vault**: Persists your primary signature, initials, company seals, and title in local storage for 1-tap insertion.
+- **Page thumbnails drawer**: Quickly preview all pages with placement counter badges and jump directly to signature blocks.
+- **Pinch-to-zoom & two-finger pan**: Smooth mobile touch navigation for reading contract fine print.
+- **Dynamic QR code audit certificate**: Verification sheet appended to the PDF containing a scannable QR code linking to `/verify/:hash`.
+- **Collaborative multi-party signing**: Start a co-signing workflow in Telegram chats via `/sign_with @username` with sequential progression and dual-delivery.
 - **Ephemeral storage**: Temporary files automatically expire and get deleted from disk after 60 minutes.
 - **Sample documents included**: Pre-loaded mutual NDA and consulting agreement allow instant testing out of the box.
 

@@ -52,15 +52,57 @@ export class SignetBot {
       });
     });
 
+    // Command: /sign_with <@username>
+    this.bot.command('sign_with', async (ctx) => {
+      const match = ctx.match?.trim();
+      const partnerUsername = match?.replace(/^@/, '');
+
+      if (!partnerUsername) {
+        await ctx.reply(
+          'Usage: /sign_with @username\n\n' +
+          'Example: /sign_with @alex_dev\n\n' +
+          'Start a collaborative two-party signing session. Send or forward your PDF along with this command, or specify the partner to co-sign.'
+        );
+        return;
+      }
+
+      const initiatorName = ctx.from?.first_name || 'Party A';
+      const sampleBuffer = await generateSamplePdf('nda');
+      const meta = await tempStore.saveDocument(sampleBuffer, 'mutual_nda_collaborative.pdf');
+
+      const session = tempStore.createMultiPartySession(
+        meta.docId,
+        meta.filename,
+        [
+          { telegramId: ctx.from?.id, username: ctx.from?.username, name: initiatorName },
+          { username: partnerUsername, name: `@${partnerUsername}` }
+        ]
+      );
+
+      const launchUrl = `${config.webAppUrl}?sessionId=${session.sessionId}&docId=${session.currentDocId}`;
+      const keyboard = new InlineKeyboard()
+        .webApp('✍️ Step 1: Sign as First Party', launchUrl);
+
+      await ctx.reply(
+        `🤝 Two-Party Signing Session Created!\n\n` +
+        `Document: ${meta.filename}\n` +
+        `Signer 1: ${initiatorName} (You)\n` +
+        `Signer 2: @${partnerUsername}\n\n` +
+        `Tap below to place your signature. Once signed, you will receive a shareable link for @${partnerUsername} to complete the contract.`,
+        { reply_markup: keyboard }
+      );
+    });
+
     // Command: /help
     this.bot.command('help', async (ctx) => {
       await ctx.reply(
         'How to use Signet:\n\n' +
         '1. Send or forward any PDF contract, invoice, or NDA to this chat.\n' +
         '2. Tap "Sign & Fill Document" to launch the Mini App.\n' +
-        '3. Draw or type your signature and position it on the document.\n' +
-        '4. Add a date stamp or initials if needed.\n' +
-        '5. Tap "Save and Send to Telegram" to receive the signed vector PDF directly in this chat.'
+        '3. Draw or type your signature, check boxes (✓/✗), or add custom text and date.\n' +
+        '4. Tap "Save and Send to Telegram" to receive the signed vector PDF directly in this chat.\n\n' +
+        'Collaborative signing:\n' +
+        'Use /sign_with @username to create a multi-party contract for you and your partner.'
       );
     });
 

@@ -101,7 +101,7 @@ describe('PDF Stamping Engine', () => {
     expect(reloaded.getTitle()).toBe('Signed Document');
   });
 
-  it('appends an audit trail certificate page when requested', async () => {
+  it('appends an audit trail certificate page with QR code when requested', async () => {
     const sampleBuffer = await generateSamplePdf('consulting');
 
     const result = await stampPdf({
@@ -131,5 +131,45 @@ describe('PDF Stamping Engine', () => {
 
     const reloaded = await PDFDocument.load(result.signedBuffer);
     expect(reloaded.getPageCount()).toBe(3);
+  });
+
+  it('draws vector checkmarks, crossmarks, and custom text badges', async () => {
+    const sampleBuffer = await generateSamplePdf('nda');
+
+    const result = await stampPdf({
+      pdfBuffer: sampleBuffer,
+      placements: [
+        {
+          pageIndex: 0,
+          normalizedX: 0.1,
+          normalizedY: 0.5,
+          normalizedWidth: 0.05,
+          normalizedHeight: 0.03,
+          type: 'checkmark'
+        },
+        {
+          pageIndex: 0,
+          normalizedX: 0.1,
+          normalizedY: 0.55,
+          normalizedWidth: 0.05,
+          normalizedHeight: 0.03,
+          type: 'crossmark'
+        },
+        {
+          pageIndex: 0,
+          normalizedX: 0.2,
+          normalizedY: 0.5,
+          normalizedWidth: 0.3,
+          normalizedHeight: 0.04,
+          type: 'text',
+          text: 'Acme Corp Verified Signer'
+        }
+      ],
+      includeAuditCertificate: false
+    });
+
+    expect(result.signedBuffer.length).toBeGreaterThan(0);
+    const reloaded = await PDFDocument.load(result.signedBuffer);
+    expect(reloaded.getPageCount()).toBe(2);
   });
 });

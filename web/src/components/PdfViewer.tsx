@@ -12,6 +12,7 @@ interface PdfViewerProps {
   onSelectPlacement: (id: string | null) => void;
   onUpdatePlacement: (id: string, updated: Partial<PlacementState>) => void;
   onDeletePlacement: (id: string) => void;
+  onPinchZoom?: (delta: number) => void;
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({
@@ -23,10 +24,40 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   selectedItemId,
   onSelectPlacement,
   onUpdatePlacement,
-  onDeletePlacement
+  onDeletePlacement,
+  onPinchZoom
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const touchStateRef = useRef<{ initialDistance: number; initialZoom: number } | null>(null);
+
+  // Pinch-to-zoom gesture handling
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && onPinchZoom) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const distance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      touchStateRef.current = { initialDistance: distance, initialZoom: 1 };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStateRef.current && onPinchZoom) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const currentDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const delta = currentDistance - touchStateRef.current.initialDistance;
+
+      if (Math.abs(delta) > 20) {
+        onPinchZoom(delta > 0 ? 0.1 : -0.1);
+        touchStateRef.current.initialDistance = currentDistance;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStateRef.current = null;
+  };
 
   // Update overlay dimension whenever canvas rendered or resized
   useEffect(() => {
@@ -54,8 +85,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex-1 w-full flex items-center justify-center p-3 sm:p-6 overflow-auto"
+      className="flex-1 w-full flex items-center justify-center p-3 sm:p-6 overflow-auto touch-pan-x touch-pan-y"
       onClick={() => onSelectPlacement(null)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Loading Spinner */}
       {isLoading && (

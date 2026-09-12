@@ -1,11 +1,13 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import crypto from 'node:crypto';
+import QRCode from 'qrcode';
+import { config } from '../config.js';
 import { normalizedToPdfPoints, type NormalizedBounds } from './coordinate.js';
 
 export interface PlacementItem extends NormalizedBounds {
   pageIndex: number;
-  type: 'signature' | 'date' | 'initials' | 'text';
-  data?: string; // base64 PNG data URL for signature / initials
+  type: 'signature' | 'date' | 'initials' | 'text' | 'checkmark' | 'crossmark' | 'stamp';
+  data?: string; // base64 PNG data URL for signature / initials / stamp
   text?: string; // string for date / text / initials
   fontSize?: number;
   color?: string; // hex color or preset
@@ -55,7 +57,7 @@ export async function stampPdf(request: StampingRequest): Promise<StampingResult
 
     const pdfBounds = normalizedToPdfPoints(item, pageSize);
 
-    if ((item.type === 'signature' || item.type === 'initials') && item.data) {
+    if ((item.type === 'signature' || item.type === 'initials' || item.type === 'stamp') && item.data) {
       try {
         const cleanBase64 = item.data.replace(/^data:image\/\w+;base64,/, '');
         const imageBuffer = Buffer.from(cleanBase64, 'base64');
@@ -78,6 +80,59 @@ export async function stampPdf(request: StampingRequest): Promise<StampingResult
           borderColor: rgb(0.8, 0.2, 0.2)
         });
       }
+    } else if (item.type === 'checkmark') {
+      // Vector checkmark (✓)
+      const x1 = pdfBounds.x + pdfBounds.width * 0.15;
+      const y1 = pdfBounds.y + pdfBounds.height * 0.45;
+      const x2 = pdfBounds.x + pdfBounds.width * 0.42;
+      const y2 = pdfBounds.y + pdfBounds.height * 0.18;
+      const x3 = pdfBounds.x + pdfBounds.width * 0.85;
+      const y3 = pdfBounds.y + pdfBounds.height * 0.85;
+
+      const checkColor = item.color === 'blue' ? rgb(0.1, 0.3, 0.8) : rgb(0.05, 0.55, 0.25);
+      const thickness = Math.max(1.5, pdfBounds.width * 0.08);
+
+      targetPage.drawLine({
+        start: { x: x1, y: y1 },
+        end: { x: x2, y: y2 },
+        thickness,
+        color: checkColor
+      });
+      targetPage.drawLine({
+        start: { x: x2, y: y2 },
+        end: { x: x3, y: y3 },
+        thickness,
+        color: checkColor
+      });
+    } else if (item.type === 'crossmark') {
+      // Vector crossmark (✗)
+      const crossColor = item.color === 'black' ? rgb(0.15, 0.15, 0.15) : rgb(0.85, 0.2, 0.2);
+      const thickness = Math.max(1.5, pdfBounds.width * 0.08);
+
+      targetPage.drawLine({
+        start: {
+          x: pdfBounds.x + pdfBounds.width * 0.2,
+          y: pdfBounds.y + pdfBounds.height * 0.2
+        },
+        end: {
+          x: pdfBounds.x + pdfBounds.width * 0.8,
+          y: pdfBounds.y + pdfBounds.height * 0.8
+        },
+        thickness,
+        color: crossColor
+      });
+      targetPage.drawLine({
+        start: {
+          x: pdfBounds.x + pdfBounds.width * 0.2,
+          y: pdfBounds.y + pdfBounds.height * 0.8
+        },
+        end: {
+          x: pdfBounds.x + pdfBounds.width * 0.8,
+          y: pdfBounds.y + pdfBounds.height * 0.2
+        },
+        thickness,
+        color: crossColor
+      });
     } else if (item.type === 'date' || item.type === 'text') {
       const textToDraw = item.text || (item.type === 'date' ? new Date().toISOString().split('T')[0] : '');
       const calcSize = Math.max(8, Math.min(item.fontSize || 12, pdfBounds.height * 0.7));
@@ -173,44 +228,89 @@ export async function stampPdf(request: StampingRequest): Promise<StampingResult
 
     currentY -= 20;
 
-    // Security Notice Box
+    // Security Notice Box with QR Code
+    const boxHeight = 85;
     auditPage.drawRectangle({
       x: 55,
-      y: currentY - 60,
+      y: currentY - boxHeight,
       width: width - 110,
-      height: 70,
+      height: boxHeight,
       color: rgb(0.96, 0.97, 0.99),
       borderColor: rgb(0.8, 0.85, 0.9),
       borderWidth: 0.5
     });
 
-    auditPage.drawText('VERIFICATION NOTICE', {
+    // Generate Verification QR Code
+    try {
+      const verifyUrl = `${config.webAppUrl}/verify/${originalSha256}`;
+      const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+        margin: 1,
+        width: 140,
+        color: { dark: '#0f172a', light: '#ffffff' }
+      });
+      const cleanQr = qrDataUrl.replace(/^data:image\/\w+;base64,/, '');
+      const qrImage = await pdfDoc.embedPng(Buffer.from(cleanQr, 'base64'));
+
+      const qrSize = 65;
+      const qrX = width - 55 - qrSize - 12;
+      const qrY = currentY - boxHeight + 10;
+
+      auditPage.drawImage(qrImage, {
+        x: qrX,
+        y: qrY,
+        width: qrSize,
+        height: qrSize
+      });
+
+      auditPage.drawText('SCAN TO VERIFY', {
+        x: qrX - 2,
+        y: qrY - 8,
+        size: 6.5,
+        font: fontHelveticaBold,
+        color: rgb(0.3, 0.4, 0.6)
+      });
+    } catch (err) {
+      console.warn('[embedder] Failed to generate QR code for audit page:', err);
+    }
+
+    auditPage.drawText('CRYPTOGRAPHIC VERIFICATION NOTICE', {
       x: 70,
-      y: currentY - 15,
+      y: currentY - 18,
       size: 9,
       font: fontHelveticaBold,
       color: rgb(0.1, 0.25, 0.5)
     });
 
     auditPage.drawText(
-      'This document was stamped directly via Signet Telegram Mini App. Zero external signing APIs',
+      'This document was executed via Signet Telegram Mini App. Digital SHA-256 digests',
       {
         x: 70,
-        y: currentY - 32,
-        size: 8.5,
+        y: currentY - 35,
+        size: 8,
         font: fontHelvetica,
         color: rgb(0.3, 0.3, 0.3)
       }
     );
 
     auditPage.drawText(
-      'were accessed. Digital hashes ensure integrity against post-signing document alterations.',
+      'ensure integrity against post-signing document alterations. Scan the QR code or visit',
       {
         x: 70,
-        y: currentY - 46,
-        size: 8.5,
+        y: currentY - 48,
+        size: 8,
         font: fontHelvetica,
         color: rgb(0.3, 0.3, 0.3)
+      }
+    );
+
+    auditPage.drawText(
+      `${config.webAppUrl}/verify/${originalSha256.substring(0, 16)}... to verify notarization details.`,
+      {
+        x: 70,
+        y: currentY - 61,
+        size: 7.5,
+        font: fontHelveticaBold,
+        color: rgb(0.15, 0.3, 0.6)
       }
     );
   }

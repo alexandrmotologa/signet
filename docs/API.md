@@ -147,3 +147,62 @@ Returns a list of bundled sample contracts.
 
 ### `GET /api/samples/:name`
 Generates or retrieves the sample document as an ephemeral document ID for direct signing.
+
+## Verification and Notarization
+
+### `GET /api/verify/:hash`
+Returns public cryptographic verification status for any document signed by this node.
+
+**Response (`200 OK`):**
+```json
+{
+  "isVerified": true,
+  "filename": "contract_signed.pdf",
+  "originalSha256": "7739b948627c4f60c83eaf3f650974a9ab49a1eaae48a45016390fe9bc6c9fd3",
+  "signedSha256": "af5c7f1a1f3df909d5e8dc8df047aa1e284c1d60ae22b51a775ca95d2037a248",
+  "pageCount": 3,
+  "placementsCount": 2,
+  "signer": {
+    "telegramId": 12345678,
+    "name": "Alex Motologa",
+    "username": "alex"
+  },
+  "timestamp": "2026-09-12T10:32:00.000Z",
+  "hasAuditCertificate": true
+}
+```
+
+## Collaborative Multi-Party Sessions
+
+### `POST /api/sessions/create`
+Initiates a sequential co-signing workflow between multiple parties.
+
+**Request Body:**
+```json
+{
+  "originalDocId": "550e8400-e29b-41d4-a716-446655440000",
+  "filename": "partnership_contract.pdf",
+  "signers": [
+    { "telegramId": 1234, "username": "initiator", "name": "Initiator" },
+    { "username": "partner_user", "name": "Partner" }
+  ]
+}
+```
+
+**Response (`201 Created`):**
+```json
+{
+  "sessionId": "d3668b23-264e-43ca-9e42-c84c1a574ca3",
+  "status": "pending",
+  "signers": [
+    { "name": "Initiator", "status": "pending" },
+    { "name": "Partner", "status": "pending" }
+  ]
+}
+```
+
+### `GET /api/sessions/:id`
+Returns current signing progress and active document version.
+
+### `POST /api/sessions/:id/sign`
+Advances session to the next signer after a party applies their signature.

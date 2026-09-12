@@ -22,8 +22,48 @@ export interface DocumentMeta {
   expiresAt: string;
 }
 
+export interface NotarizationRecord {
+  originalSha256: string;
+  signedSha256: string;
+  docId: string;
+  filename: string;
+  pageCount: number;
+  placementsCount: number;
+  signer?: {
+    telegramId?: number;
+    name?: string;
+    username?: string;
+  };
+  timestamp: string;
+  hasAuditCertificate: boolean;
+}
+
+export interface MultiPartySigner {
+  id: string;
+  telegramId?: number;
+  username?: string;
+  name: string;
+  status: 'pending' | 'signed';
+  signedAt?: string;
+  signedDocId?: string;
+}
+
+export interface MultiPartySession {
+  sessionId: string;
+  originalDocId: string;
+  currentDocId: string;
+  filename: string;
+  signers: MultiPartySigner[];
+  status: 'pending' | 'in_progress' | 'completed';
+  createdAt: string;
+  completedAt?: string;
+  finalDocId?: string;
+}
+
 class TempStore {
   private metaIndex = new Map<string, DocumentMeta>();
+  private notarizationIndex = new Map<string, NotarizationRecord>();
+  private sessionsIndex = new Map<string, MultiPartySession>();
   private storageDir: string;
   private readonly ttlMs = 60 * 60 * 1000; // 1 hour TTL
   private cleanupTimer: NodeJS.Timeout | null = null;
@@ -144,9 +184,85 @@ class TempStore {
     }
   }
 
-  public getMetrics(): { activeDocuments: number; storageDir: string } {
+  public saveNotarization(record: NotarizationRecord): void {
+    this.notarizationIndex.set(record.signedSha256.toLowerCase(), record);
+    this.notarizationIndex.set(record.originalSha256.toLowerCase(), record);
+  }
+
+  public getNotarization(sha256: string): NotarizationRecord | null {
+    return this.notarizationIndex.get(sha256.toLowerCase()) || null;
+  }
+
+  public createMultiPartySession(
+    originalDocId: string,
+    filename: string,
+    signersList: { telegramId?: number; username?: string; name: string }[]
+  ): MultiPartySession {
+    const sessionId = crypto.randomUUID();
+    const signers: MultiPartySigner[] = signersList.map((s, idx) => ({
+      id: crypto.randomUUID(),
+      telegramId: s.telegramId,
+      username: s.username?.replace(/^@/, ''),
+      name: s.name || `Signer ${idx + 1}`,
+      status: 'pending'
+    }));
+
+    const session: MultiPartySession = {
+      sessionId,
+      originalDocId,
+      currentDocId: originalDocId,
+      filename,
+      signers,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+
+    this.sessionsIndex.set(sessionId, session);
+    return session;
+  }
+
+  public getMultiPartySession(sessionId: string): MultiPartySession | null {
+    return this.sessionsIndex.get(sessionId) || null;
+  }
+
+  public advanceMultiPartySession(
+    sessionId: string,
+    signerIdentifier: string | number, // id, username, or telegramId
+    newSignedDocId: string
+  ): MultiPartySession | null {
+    const session = this.sessionsIndex.get(sessionId);
+    if (!session) return null;
+
+    const signer = session.signers.find(
+      (s) =>
+        s.id === signerIdentifier ||
+        (s.telegramId && s.telegramId === Number(signerIdentifier)) ||
+        (s.username && s.username.toLowerCase() === String(signerIdentifier).toLowerCase().replace(/^@/, ''))
+    );
+
+    if (signer && signer.status !== 'signed') {
+      signer.status = 'signed';
+      signer.signedAt = new Date().toISOString();
+      signer.signedDocId = newSignedDocId;
+      session.currentDocId = newSignedDocId;
+
+      const allSigned = session.signers.every((s) => s.status === 'signed');
+      if (allSigned) {
+        session.status = 'completed';
+        session.completedAt = new Date().toISOString();
+        session.finalDocId = newSignedDocId;
+      } else {
+        session.status = 'in_progress';
+      }
+    }
+
+    return session;
+  }
+
+  public getMetrics(): { activeDocuments: number; activeSessions: number; storageDir: string } {
     return {
       activeDocuments: this.metaIndex.size,
+      activeSessions: this.sessionsIndex.size,
       storageDir: this.storageDir
     };
   }
