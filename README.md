@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="#interface-showcase">Interface Showcase</a> •
+  <a href="#interface-preview">Interface Preview</a> •
   <a href="#key-capabilities">Key Capabilities</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#quick-start">Quick Start</a> •
@@ -26,7 +26,7 @@ PDFs sent to the Telegram bot open instantly in a fluid canvas editor where sign
 
 ---
 
-## Interface Showcase
+## Interface Preview
 
 ### Desktop & Tablet Signing Workbench
 Full-page vector document viewer with bottom glass action dock, live annotation counter, and interactive draggable badges.
@@ -247,6 +247,10 @@ signet/
 ```
 
 ---
+
+## Contributing
+
+Please review [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines, project setup, and pull request workflows.
 
 ## License
 
